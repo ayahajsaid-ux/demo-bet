@@ -1,0 +1,201 @@
+
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Demo Bet (Client)</title>
+  <!-- Tailwind CDN for quick demo -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="max-w-3xl mx-auto p-6">
+    <h1 class="text-3xl font-bold mb-4">Demo Bet - محاكاة</h1>
+    <div id="root"></div>
+  </div>
+
+  <!-- React + Babel in browser for quick demo -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+
+  <script type="text/babel">
+  const { useState, useEffect } = React;
+  const API = "http://localhost:3000";
+
+  function App(){
+    const [token, setToken] = useState(localStorage.getItem('token') || '');
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [me, setMe] = useState(null);
+    const [amount, setAmount] = useState('');
+    const [stake, setStake] = useState('');
+    const [bets, setBets] = useState([]);
+    const [adminUsers, setAdminUsers] = useState([]);
+
+    useEffect(() => {
+      if(token) fetchMe();
+    }, [token]);
+
+    function saveToken(t){
+      localStorage.setItem('token', t);
+      setToken(t);
+    }
+
+    async function register(){
+      try{
+        await axios.post(API + '/register', {username, password});
+        alert('Registered. Now login.');
+      }catch(e){ alert(e.response?.data?.error || e.message); }
+    }
+    async function login(){
+      try{
+        const res = await axios.post(API + '/login', {username, password});
+        saveToken(res.data.token);
+        setUsername(''); setPassword('');
+      }catch(e){ alert(e.response?.data?.error || e.message); }
+    }
+    async function fetchMe(){
+      try{
+        const res = await axios.get(API + '/me', {headers: {Authorization: 'Bearer ' + token}});
+        setMe(res.data);
+        fetchBets();
+      }catch(e){ console.error(e); logout(); }
+    }
+    function logout(){
+      localStorage.removeItem('token');
+      setToken(''); setMe(null); setBets([]); setAdminUsers([]);
+    }
+
+    async function deposit(){
+      try{
+        const res = await axios.post(API + '/wallet/deposit', {amount}, {headers:{Authorization:'Bearer ' + token}});
+        alert('New balance: ' + res.data.newBalance);
+        fetchMe();
+      }catch(e){ alert(e.response?.data?.error || e.message); }
+    }
+    async function withdraw(){
+      try{
+        const res = await axios.post(API + '/wallet/withdraw', {amount}, {headers:{Authorization:'Bearer ' + token}});
+        alert('New balance: ' + res.data.newBalance);
+        fetchMe();
+      }catch(e){ alert(e.response?.data?.error || e.message); }
+    }
+    async function placeBet(){
+      try{
+        const res = await axios.post(API + '/bet/place', {stake}, {headers:{Authorization:'Bearer ' + token}});
+        alert('Outcome: ' + res.data.outcome + ' | New balance: ' + res.data.newBalance);
+        fetchMe(); fetchBets();
+      }catch(e){ alert(e.response?.data?.error || e.message); }
+    }
+    async function fetchBets(){
+      try{
+        const res = await axios.get(API + '/bets', {headers:{Authorization:'Bearer ' + token}});
+        setBets(res.data.bets);
+      }catch(e){ console.error(e); }
+    }
+    async function adminFetchUsers(){
+      try{
+        const res = await axios.get(API + '/admin/users', {headers:{Authorization:'Bearer ' + token}});
+        setAdminUsers(res.data.users);
+      }catch(e){ alert(e.response?.data?.error || e.message); }
+    }
+    async function adminMint(u){
+      const amt = prompt('Amount to mint for ' + u + ' (e.g. 100000000000)');
+      if(!amt) return;
+      try{
+        await axios.post(API + '/admin/mint', {username: u, amount: amt}, {headers:{Authorization:'Bearer ' + token}});
+        alert('Minted ' + amt);
+        adminFetchUsers();
+      }catch(e){ alert(e.response?.data?.error || e.message); }
+    }
+
+    return (
+      <div className="space-y-6">
+        {!token &&
+          <div className="p-4 bg-white rounded shadow">
+            <h2 className="font-semibold mb-2">تسجيل / دخول</h2>
+            <input className="border p-2 mr-2" placeholder="username" value={username} onChange={e=>setUsername(e.target.value)} />
+            <input type="password" className="border p-2 mr-2" placeholder="password" value={password} onChange={e=>setPassword(e.target.value)} />
+            <div className="mt-2">
+              <button className="bg-blue-600 text-white px-4 py-2 mr-2 rounded" onClick={login}>دخول</button>
+              <button className="bg-green-600 text-white px-4 py-2 rounded" onClick={register}>تسجيل</button>
+            </div>
+            <p className="text-sm text-gray-600 mt-2">Hint: admin-demo / admin123 موجود بالفعل</p>
+          </div>
+        }
+
+        {token && me &&
+          <div className="p-4 bg-white rounded shadow">
+            <div className="flex justify-between items-center">
+              <div>
+                <div className="text-lg font-semibold">مرحباً، {me.user.username}</div>
+                <div>الرصيد: <span className="font-mono">{me.balance} دينار</span></div>
+                <div className="text-sm text-gray-500">admin: {me.user.is_admin ? 'نعم' : 'لا'}</div>
+              </div>
+              <div>
+                <button className="bg-red-500 text-white px-3 py-1 rounded" onClick={logout}>خروج</button>
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <input className="border p-2" placeholder="المبلغ (مثال: 1000)" value={amount} onChange={e=>setAmount(e.target.value)} />
+              <div className="flex space-x-2">
+                <button className="bg-blue-500 text-white px-3 py-2 rounded" onClick={deposit}>ايداع (وهمي)</button>
+                <button className="bg-yellow-500 text-white px-3 py-2 rounded" onClick={withdraw}>سحب (وهمي)</button>
+              </div>
+            </div>
+
+            <hr className="my-4" />
+
+            <div>
+              <h3 className="font-semibold">وضع رهان 50/50</h3>
+              <div className="flex space-x-2 mt-2">
+                <input className="border p-2" placeholder="مقدار الرهان" value={stake} onChange={e=>setStake(e.target.value)} />
+                <button className="bg-indigo-600 text-white px-3 py-2 rounded" onClick={placeBet}>ارمِ</button>
+              </div>
+            </div>
+
+            <hr className="my-4" />
+
+            <div>
+              <h3 className="font-semibold">سجل الرهانات</h3>
+              <div className="mt-2 space-y-2">
+                {bets.map(b => (
+                  <div key={b.id} className="p-2 bg-gray-50 rounded flex justify-between items-center">
+                    <div className="text-sm">#{b.id} — {b.stake} دينار — {b.outcome} — {b.created_at}</div>
+                    <div className="text-sm font-semibold">{b.win ? 'فاز' : 'خسر'}</div>
+                  </div>
+                ))}
+                {bets.length===0 && <div className="text-sm text-gray-500">لا توجد رهانات بعد.</div>}
+              </div>
+            </div>
+
+            {me.user.is_admin &&
+              <div className="mt-6 p-4 bg-white rounded shadow">
+                <h3 className="font-semibold">لوحة الأدمن — المستخدمون</h3>
+                <div className="mt-2">
+                  <button className="bg-gray-700 text-white px-3 py-1 rounded" onClick={adminFetchUsers}>تحميل المستخدمين</button>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {adminUsers.map(u => (
+                    <div key={u.id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                      <div>{u.username} — <span className="font-mono">{u.balance}</span> دينار</div>
+                      <div>
+                        <button className="bg-green-600 text-white px-2 py-1 rounded" onClick={()=>adminMint(u.username)}>منح رصيد</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
